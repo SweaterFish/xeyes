@@ -53,6 +53,7 @@ from the X Consortium.
 # include <X11/extensions/XInput2.h>
 # include <assert.h>
 
+
 #define offset(field) XtOffsetOf(EyesRec, eyes.field)
 #define goffset(field) XtOffsetOf(WidgetRec, core.field)
 
@@ -88,6 +89,7 @@ static XtResource resources[] = {
 	offset(distance), XtRImmediate, (XtPointer) FALSE },
     {(char *) XtNbiblicallyAccurate, (char *) XtCBoolean, XtRBoolean, sizeof(Boolean),
 	offset(biblically_accurate), XtRImmediate, (XtPointer) FALSE },
+
 };
 
 #undef offset
@@ -95,7 +97,7 @@ static XtResource resources[] = {
 
 # define EYE_OFFSET	(0.1)	/* padding between eyes */
 # define EYE_THICK	(0.175)	/* thickness of eye rim */
-# define BALL_DIAM	(0.3)
+# define BALL_DIAM	(0.4)	/* diameter of pupil */
 # define BALL_PAD	(0.175)
 # define EYE_DIAM	(2.0 - (EYE_THICK + EYE_OFFSET) * 2)
 # define BALL_DIST	((EYE_DIAM - BALL_DIAM) / 2.0 - BALL_PAD)
@@ -940,6 +942,41 @@ static Boolean SetValues (
     return( FALSE );
 }
 
+/* Add a defaultTranslations table with mouse button events and associated
+ * actions and functions to run an external script when xeyes is clicked.
+ * Button number, click location, and window geometry are sent as arguments. */
+static char defaultTranslations[] = "<Btn1Down>:script(1)\n<Btn2Down>:script(2)\n<Btn3Down>:script(3)\n<ButtonRelease>:reverse()";
+
+static void Reverse(Widget gw, _X_UNUSED XEvent *event, _X_UNUSED String *params, _X_UNUSED Cardinal *nparams) { 
+  EyesWidget w = (EyesWidget)gw;
+  Pixel fg = w->eyes.fill[PART_PUPIL];
+  Pixel bg = w->eyes.fill[PART_CENTER];
+  w->eyes.fill[PART_CENTER] = fg;
+  w->eyes.fill[PART_PUPIL] = bg;
+  repaint_window (w);
+}
+
+static void RunScript(Widget gw, _X_UNUSED XEvent *event, String *button, _X_UNUSED Cardinal *nparams) { 
+  Window win;
+  int winx, winy;
+  int ptrx, ptry;
+  unsigned int width, height;
+  unsigned int mask;
+  char cmd [40];
+  
+  XQueryPointer(XtDisplay(gw), XtWindow(gw), &win, &win, &winx, &winy, &ptrx, &ptry, &mask);
+  XGetGeometry(XtDisplay(gw), XtWindow(gw), &win, &winx, &winy, &width, &height, &mask, &mask);
+  
+  snprintf(cmd, sizeof(cmd), "xeyes.sh %s %d %d %d %d &", *button, ptrx, ptry, width, height);
+  (void) system(cmd);
+  
+  Reverse(gw,NULL,NULL,0);
+}
+
+static XtActionsRec actionsList[] = { { (char *) "script", RunScript }, { (char *) "reverse", Reverse } };
+
+/* Also see changes to the actions, num_actions, and tm_table fields below. */
+
 EyesClassRec eyesClassRec = {
     { /* core fields */
     /* superclass		*/	&widgetClassRec,
@@ -951,8 +988,8 @@ EyesClassRec eyesClassRec = {
     /* initialize		*/	Initialize,
     /* initialize_hook		*/	NULL,
     /* realize			*/	Realize,
-    /* actions			*/	NULL,
-    /* num_actions		*/	0,
+    /* actions			*/	actionsList,
+    /* num_actions		*/	XtNumber(actionsList),
     /* resources		*/	resources,
     /* num_resources		*/	XtNumber(resources),
     /* xrm_class		*/	NULLQUARK,
@@ -970,7 +1007,8 @@ EyesClassRec eyesClassRec = {
     /* accept_focus		*/	NULL,
     /* version			*/	XtVersion,
     /* callback_private		*/	NULL,
-    /* tm_table			*/	NULL,
+    /* tm_table			*/	defaultTranslations,
     /* query_geometry		*/	XtInheritQueryGeometry,
     }
 };
+
